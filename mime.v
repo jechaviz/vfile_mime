@@ -4,6 +4,15 @@ import os
 
 pub const octet_stream = 'application/octet-stream'
 
+const msword_mime = 'application/msword'
+const ms_excel_mime = 'application/vnd.ms-excel'
+const ms_powerpoint_mime = 'application/vnd.ms-powerpoint'
+const ole_compound_file_mime = 'application/vnd.ms-office'
+const ole_magic = [u8(0xd0), 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
+const ole_free_sector = u32(0xffffffff)
+const ole_end_of_chain = u32(0xfffffffe)
+const ole_fat_sector = u32(0xfffffffd)
+
 pub struct MimeProbe {
 pub:
 	name     string
@@ -56,7 +65,174 @@ pub fn detect_magic(bytes []u8) ?string {
 		}
 		return 'application/zip'
 	}
+	if starts_with(bytes, ole_magic) {
+		return detect_ole_compound_file(bytes)
+	}
 	return none
+}
+
+fn detect_ole_compound_file(bytes []u8) string {
+	for name in ole_directory_names(bytes) {
+		match name.to_lower() {
+			'worddocument' {
+				return msword_mime
+			}
+			'workbook', 'book' {
+				return ms_excel_mime
+			}
+			'powerpoint document' {
+				return ms_powerpoint_mime
+			}
+			else {}
+		}
+	}
+	return ole_compound_file_mime
+}
+
+fn ole_directory_names(bytes []u8) []string {
+	if bytes.len < 512 {
+		return []
+	}
+	sector_shift := read_u16_le(bytes, 30)
+	if sector_shift != 9 && sector_shift != 12 {
+		return []
+	}
+	sector_size := 1 << int(sector_shift)
+	first_dir_sector := read_u32_le(bytes, 48)
+	if !ole_is_regular_sector(first_dir_sector) {
+		return []
+	}
+	fat_sector_count := read_u32_le(bytes, 44)
+	fat_sectors := ole_difat_sectors(bytes, sector_size, fat_sector_count)
+	fat := ole_fat_entries(bytes, sector_size, fat_sectors)
+	if fat.len == 0 {
+		return []
+	}
+
+	mut names := []string{}
+	mut seen_sectors := []u32{}
+	mut sector := first_dir_sector
+	for ole_is_regular_sector(sector) && names.len < 256 {
+		if sector in seen_sectors {
+			break
+		}
+		seen_sectors << sector
+		offset := ole_sector_offset(bytes, sector_size, sector) or { break }
+		for entry_offset := offset; entry_offset + 128 <= offset + sector_size; entry_offset += 128 {
+			name := ole_directory_entry_name(bytes[entry_offset..entry_offset + 128])
+			if name != '' {
+				names << name
+			}
+		}
+		if int(sector) >= fat.len {
+			break
+		}
+		next_sector := fat[int(sector)]
+		if next_sector == ole_end_of_chain {
+			break
+		}
+		sector = next_sector
+	}
+	return names
+}
+
+fn ole_difat_sectors(bytes []u8, sector_size int, fat_sector_count u32) []u32 {
+	mut sectors := []u32{}
+	fat_sector_limit := capped_u32_to_int(fat_sector_count, ole_regular_sector_count(bytes,
+		sector_size))
+	for i in 0 .. 109 {
+		if sectors.len >= fat_sector_limit {
+			return sectors
+		}
+		sector := read_u32_le(bytes, 76 + (i * 4))
+		if ole_is_regular_sector(sector) {
+			sectors << sector
+		}
+	}
+
+	mut difat_sector := read_u32_le(bytes, 68)
+	difat_sector_limit := capped_u32_to_int(read_u32_le(bytes, 72), ole_regular_sector_count(bytes,
+		sector_size))
+	mut seen_difat_sectors := []u32{}
+	for _ in 0 .. difat_sector_limit {
+		if sectors.len >= fat_sector_limit || !ole_is_regular_sector(difat_sector)
+			|| difat_sector in seen_difat_sectors {
+			break
+		}
+		seen_difat_sectors << difat_sector
+		offset := ole_sector_offset(bytes, sector_size, difat_sector) or { break }
+		entries_per_sector := (sector_size / 4) - 1
+		for i in 0 .. entries_per_sector {
+			if sectors.len >= fat_sector_limit {
+				return sectors
+			}
+			sector := read_u32_le(bytes, offset + (i * 4))
+			if ole_is_regular_sector(sector) {
+				sectors << sector
+			}
+		}
+		difat_sector = read_u32_le(bytes, offset + (entries_per_sector * 4))
+	}
+	return sectors
+}
+
+fn ole_fat_entries(bytes []u8, sector_size int, fat_sectors []u32) []u32 {
+	mut fat := []u32{}
+	for sector in fat_sectors {
+		offset := ole_sector_offset(bytes, sector_size, sector) or { continue }
+		for entry_offset := offset; entry_offset + 4 <= offset + sector_size; entry_offset += 4 {
+			fat << read_u32_le(bytes, entry_offset)
+		}
+	}
+	return fat
+}
+
+fn ole_sector_offset(bytes []u8, sector_size int, sector u32) ?int {
+	if !ole_is_regular_sector(sector) || bytes.len < 512 {
+		return none
+	}
+	if sector >= u32(ole_regular_sector_count(bytes, sector_size)) {
+		return none
+	}
+	return 512 + (int(sector) * sector_size)
+}
+
+fn ole_regular_sector_count(bytes []u8, sector_size int) int {
+	if bytes.len < 512 || sector_size <= 0 {
+		return 0
+	}
+	return (bytes.len - 512) / sector_size
+}
+
+fn capped_u32_to_int(value u32, cap int) int {
+	if cap <= 0 {
+		return 0
+	}
+	if value > u32(cap) {
+		return cap
+	}
+	return int(value)
+}
+
+fn ole_is_regular_sector(sector u32) bool {
+	return sector < 0xfffffff0
+}
+
+fn ole_directory_entry_name(entry []u8) string {
+	if entry.len < 128 {
+		return ''
+	}
+	name_len := int(read_u16_le(entry, 64))
+	if name_len < 2 || name_len > 64 {
+		return ''
+	}
+	mut name := []u8{}
+	for offset := 0; offset + 1 < name_len - 2; offset += 2 {
+		if entry[offset + 1] == 0 && entry[offset] != 0 {
+			name << entry[offset]
+		}
+	}
+	return name.bytestr()
 }
 
 fn detect_openxml_package(bytes []u8) ?string {
@@ -112,6 +288,9 @@ pub fn from_extension(name string) ?string {
 		'webp' { 'image/webp' }
 		'tif', 'tiff' { 'image/tiff' }
 		'eml' { 'message/rfc822' }
+		'doc', 'dot' { msword_mime }
+		'xls', 'xlt', 'xla' { ms_excel_mime }
+		'ppt', 'pps', 'pot' { ms_powerpoint_mime }
 		'docx' { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
 		'pptx' { 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }
 		'xlsx' { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
@@ -137,4 +316,16 @@ fn starts_with(bytes []u8, prefix []u8) bool {
 		}
 	}
 	return true
+}
+
+fn read_u16_le(bytes []u8, offset int) u16 {
+	return u16(bytes[offset]) | (u16(bytes[offset + 1]) << 8)
+}
+
+fn read_u32_le(bytes []u8, offset int) u32 {
+	b0 := u32(bytes[offset])
+	b1 := u32(bytes[offset + 1]) << 8
+	b2 := u32(bytes[offset + 2]) << 16
+	b3 := u32(bytes[offset + 3]) << 24
+	return b0 | b1 | b2 | b3
 }
