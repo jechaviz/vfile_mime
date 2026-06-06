@@ -18,6 +18,15 @@ fn test_detect_pdf_magic_for_generic_mime() {
 	assert mime == 'application/pdf'
 }
 
+fn test_detect_rtf_magic_for_generic_mime() {
+	mime := detect(MimeProbe{
+		name:     'notes.bin'
+		declared: 'application/octet-stream'
+		bytes:    r'{\rtf1\ansi hello}'.bytes()
+	})
+	assert mime == 'application/rtf'
+}
+
 fn test_detect_extension_for_generic_mime_when_magic_unknown() {
 	mime := detect(MimeProbe{
 		name:     'report.docx'
@@ -111,6 +120,27 @@ fn test_detect_legacy_office_extensions_for_generic_mime() {
 		declared: ''
 		bytes:    'body'.bytes()
 	}) == 'application/vnd.ms-powerpoint'
+}
+
+fn test_detect_rtf_extension_for_generic_mime() {
+	assert detect(MimeProbe{
+		name:     'notes.rtf'
+		declared: ''
+		bytes:    'body'.bytes()
+	}) == 'application/rtf'
+}
+
+fn test_detect_delimited_text_extensions_for_generic_mime() {
+	assert detect(MimeProbe{
+		name:     'rows.csv'
+		declared: ''
+		bytes:    'a,b\n1,2\n'.bytes()
+	}) == 'text/csv'
+	assert detect(MimeProbe{
+		name:     'rows.tsv'
+		declared: ''
+		bytes:    'a\tb\n1\t2\n'.bytes()
+	}) == 'text/tab-separated-values'
 }
 
 fn test_detect_unknown_generic_falls_back_to_octet_stream() {

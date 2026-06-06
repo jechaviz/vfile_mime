@@ -8,7 +8,10 @@ const msword_mime = 'application/msword'
 const ms_excel_mime = 'application/vnd.ms-excel'
 const ms_powerpoint_mime = 'application/vnd.ms-powerpoint'
 const ole_compound_file_mime = 'application/vnd.ms-office'
+const rtf_mime = 'application/rtf'
+const tsv_mime = 'text/tab-separated-values'
 const ole_magic = [u8(0xd0), 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
+const rtf_magic = [u8(0x7b), 0x5c, 0x72, 0x74, 0x66]
 const ole_free_sector = u32(0xffffffff)
 const ole_end_of_chain = u32(0xfffffffe)
 const ole_fat_sector = u32(0xfffffffd)
@@ -42,6 +45,9 @@ pub fn is_generic(value string) bool {
 pub fn detect_magic(bytes []u8) ?string {
 	if starts_with(bytes, '%PDF-'.bytes()) {
 		return 'application/pdf'
+	}
+	if starts_with(bytes, rtf_magic) {
+		return rtf_mime
 	}
 	if starts_with(bytes, [u8(0x89), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) {
 		return 'image/png'
@@ -282,6 +288,8 @@ pub fn from_extension(name string) ?string {
 		'xml' { 'application/xml' }
 		'json' { 'application/json' }
 		'csv' { 'text/csv' }
+		'tsv' { tsv_mime }
+		'rtf' { rtf_mime }
 		'png' { 'image/png' }
 		'jpg', 'jpeg' { 'image/jpeg' }
 		'gif' { 'image/gif' }
