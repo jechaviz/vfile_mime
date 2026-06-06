@@ -48,7 +48,30 @@ pub fn detect_magic(bytes []u8) ?string {
 		return 'image/webp'
 	}
 	if starts_with(bytes, 'PK\x03\x04'.bytes()) {
+		if office := detect_openxml_package(bytes) {
+			return office
+		}
 		return 'application/zip'
+	}
+	return none
+}
+
+fn detect_openxml_package(bytes []u8) ?string {
+	text := bytes.bytestr()
+	if !text.contains('[Content_Types].xml') {
+		return none
+	}
+	if text.contains('word/document.xml')
+		|| text.contains('application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml') {
+		return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+	}
+	if text.contains('ppt/presentation.xml') || text.contains('ppt/slides/slide')
+		|| text.contains('application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml') {
+		return 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+	}
+	if text.contains('xl/workbook.xml')
+		|| text.contains('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml') {
+		return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 	}
 	return none
 }

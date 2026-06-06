@@ -27,6 +27,24 @@ fn test_detect_extension_for_generic_mime_when_magic_unknown() {
 	assert mime == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 }
 
+fn test_detect_openxml_magic_for_generic_mime() {
+	assert detect(MimeProbe{
+		name:     'blob'
+		declared: 'application/octet-stream'
+		bytes:    openxml_probe_bytes('[Content_Types].xml word/document.xml')
+	}) == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+	assert detect(MimeProbe{
+		name:     'blob'
+		declared: ''
+		bytes:    openxml_probe_bytes('[Content_Types].xml ppt/presentation.xml ppt/slides/slide1.xml')
+	}) == 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+	assert detect(MimeProbe{
+		name:     'blob'
+		declared: ''
+		bytes:    openxml_probe_bytes('[Content_Types].xml xl/workbook.xml')
+	}) == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+}
+
 fn test_detect_unknown_generic_falls_back_to_octet_stream() {
 	mime := detect(MimeProbe{
 		name:     'blob'
@@ -34,4 +52,10 @@ fn test_detect_unknown_generic_falls_back_to_octet_stream() {
 		bytes:    [u8(0x00), 0x01]
 	})
 	assert mime == octet_stream
+}
+
+fn openxml_probe_bytes(names string) []u8 {
+	mut out := 'PK\x03\x04'.bytes()
+	out << names.bytes()
+	return out
 }
