@@ -51,6 +51,9 @@ pub fn detect_magic(bytes []u8) ?string {
 		if office := detect_openxml_package(bytes) {
 			return office
 		}
+		if odf := detect_opendocument_package(bytes) {
+			return odf
+		}
 		return 'application/zip'
 	}
 	return none
@@ -72,6 +75,23 @@ fn detect_openxml_package(bytes []u8) ?string {
 	if text.contains('xl/workbook.xml')
 		|| text.contains('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml') {
 		return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+	}
+	return none
+}
+
+fn detect_opendocument_package(bytes []u8) ?string {
+	text := bytes.bytestr()
+	if !text.contains('mimetypeapplication/vnd.oasis.opendocument.') {
+		return none
+	}
+	if text.contains('mimetypeapplication/vnd.oasis.opendocument.text') {
+		return 'application/vnd.oasis.opendocument.text'
+	}
+	if text.contains('mimetypeapplication/vnd.oasis.opendocument.spreadsheet') {
+		return 'application/vnd.oasis.opendocument.spreadsheet'
+	}
+	if text.contains('mimetypeapplication/vnd.oasis.opendocument.presentation') {
+		return 'application/vnd.oasis.opendocument.presentation'
 	}
 	return none
 }

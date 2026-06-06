@@ -45,6 +45,19 @@ fn test_detect_openxml_magic_for_generic_mime() {
 	}) == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 }
 
+fn test_detect_opendocument_magic_for_generic_mime() {
+	assert detect(MimeProbe{
+		name:     'blob'
+		declared: ''
+		bytes:    odf_probe_bytes('application/vnd.oasis.opendocument.text')
+	}) == 'application/vnd.oasis.opendocument.text'
+	assert detect(MimeProbe{
+		name:     'blob'
+		declared: ''
+		bytes:    odf_probe_bytes('application/vnd.oasis.opendocument.presentation')
+	}) == 'application/vnd.oasis.opendocument.presentation'
+}
+
 fn test_detect_unknown_generic_falls_back_to_octet_stream() {
 	mime := detect(MimeProbe{
 		name:     'blob'
@@ -57,5 +70,11 @@ fn test_detect_unknown_generic_falls_back_to_octet_stream() {
 fn openxml_probe_bytes(names string) []u8 {
 	mut out := 'PK\x03\x04'.bytes()
 	out << names.bytes()
+	return out
+}
+
+fn odf_probe_bytes(mime string) []u8 {
+	mut out := 'PK\x03\x04mimetype'.bytes()
+	out << mime.bytes()
 	return out
 }
