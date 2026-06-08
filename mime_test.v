@@ -143,6 +143,37 @@ fn test_detect_delimited_text_extensions_for_generic_mime() {
 	}) == 'text/tab-separated-values'
 }
 
+fn test_detect_teedy_video_magic_for_generic_mime() {
+	assert detect(MimeProbe{
+		name:     'blob'
+		declared: ''
+		bytes:    mp4_probe_bytes()
+	}) == 'video/mp4'
+	assert detect(MimeProbe{
+		name:     'blob'
+		declared: 'application/octet-stream'
+		bytes:    webm_probe_bytes()
+	}) == 'video/webm'
+}
+
+fn test_detect_teedy_video_extensions_for_generic_mime() {
+	assert detect(MimeProbe{
+		name:     'clip.mp4'
+		declared: ''
+		bytes:    'body'.bytes()
+	}) == 'video/mp4'
+	assert detect(MimeProbe{
+		name:     'clip.m4v'
+		declared: ''
+		bytes:    'body'.bytes()
+	}) == 'video/mp4'
+	assert detect(MimeProbe{
+		name:     'clip.webm'
+		declared: ''
+		bytes:    'body'.bytes()
+	}) == 'video/webm'
+}
+
 fn test_detect_unknown_generic_falls_back_to_octet_stream() {
 	mime := detect(MimeProbe{
 		name:     'blob'
@@ -162,6 +193,14 @@ fn odf_probe_bytes(mime string) []u8 {
 	mut out := 'PK\x03\x04mimetype'.bytes()
 	out << mime.bytes()
 	return out
+}
+
+fn mp4_probe_bytes() []u8 {
+	return [u8(0), 0, 0, 24] + 'ftypisom'.bytes()
+}
+
+fn webm_probe_bytes() []u8 {
+	return [u8(0x1a), 0x45, 0xdf, 0xa3, 0x84] + 'webm'.bytes()
 }
 
 fn ole_probe_bytes(names []string) []u8 {

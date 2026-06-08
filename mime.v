@@ -62,6 +62,12 @@ pub fn detect_magic(bytes []u8) ?string {
 		&& starts_with(bytes[8..], 'WEBP'.bytes()) {
 		return 'image/webp'
 	}
+	if is_mp4_magic(bytes) {
+		return 'video/mp4'
+	}
+	if is_webm_magic(bytes) {
+		return 'video/webm'
+	}
 	if starts_with(bytes, 'PK\x03\x04'.bytes()) {
 		if office := detect_openxml_package(bytes) {
 			return office
@@ -295,6 +301,8 @@ pub fn from_extension(name string) ?string {
 		'gif' { 'image/gif' }
 		'webp' { 'image/webp' }
 		'tif', 'tiff' { 'image/tiff' }
+		'mp4', 'm4v' { 'video/mp4' }
+		'webm' { 'video/webm' }
 		'eml' { 'message/rfc822' }
 		'doc', 'dot' { msword_mime }
 		'xls', 'xlt', 'xla' { ms_excel_mime }
@@ -324,6 +332,18 @@ fn starts_with(bytes []u8, prefix []u8) bool {
 		}
 	}
 	return true
+}
+
+fn is_mp4_magic(bytes []u8) bool {
+	return bytes.len >= 12 && bytes[4..8].bytestr() == 'ftyp'
+}
+
+fn is_webm_magic(bytes []u8) bool {
+	if !starts_with(bytes, [u8(0x1a), 0x45, 0xdf, 0xa3]) {
+		return false
+	}
+	limit := if bytes.len < 4096 { bytes.len } else { 4096 }
+	return bytes[..limit].bytestr().contains('webm')
 }
 
 fn read_u16_le(bytes []u8, offset int) u16 {
